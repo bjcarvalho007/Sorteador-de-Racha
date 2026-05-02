@@ -1,0 +1,424 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, 
+  UserPlus, 
+  Trash2, 
+  Trophy, 
+  Shuffle, 
+  Shield,
+  User as UserIcon,
+  AlertCircle,
+  ClipboardList,
+  PlusCircle,
+  Info
+} from 'lucide-react';
+
+const App = () => {
+  const [players, setPlayers] = useState([]);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [isGoalkeeper, setIsGoalkeeper] = useState(false);
+  const [playersPerTeam, setPlayersPerTeam] = useState(5);
+  const [bulkText, setBulkText] = useState('');
+  const [showBulkInput, setShowBulkInput] = useState(false);
+  const [teams, setTeams] = useState([]);
+  const [error, setError] = useState('');
+
+  // Adicionar jogador individualmente
+  const addPlayer = (e) => {
+    e.preventDefault();
+    if (!newPlayerName.trim()) return;
+
+    const player = {
+      id: crypto.randomUUID(),
+      name: newPlayerName.trim(),
+      isGoalkeeper: isGoalkeeper
+    };
+
+    setPlayers([...players, player]);
+    setNewPlayerName('');
+    setIsGoalkeeper(false);
+    setError('');
+  };
+
+  // Importar lista do WhatsApp
+  const importFromWhatsApp = () => {
+    if (!bulkText.trim()) return;
+
+    const lines = bulkText.split('\n');
+    const newPlayers = [];
+
+    lines.forEach(line => {
+      // Limpa números iniciais (1., 01-, etc) e espaços
+      let cleanedName = line.replace(/^\d+[\s.-]*/, '').trim();
+      
+      if (cleanedName) {
+        // Detecta se é goleiro por tags comuns (G), (GOL), [G]
+        const isGK = /\((g|gol)\)|\[(g|gol)\]|goleiro/i.test(cleanedName);
+        
+        // Remove a tag do nome para ficar limpo
+        cleanedName = cleanedName.replace(/\s*(\((g|gol)\)|\[(g|gol)\]|goleiro)\s*/i, '').trim();
+
+        if (cleanedName) {
+          newPlayers.push({
+            id: crypto.randomUUID(),
+            name: cleanedName,
+            isGoalkeeper: isGK
+          });
+        }
+      }
+    });
+
+    setPlayers([...players, ...newPlayers]);
+    setBulkText('');
+    setShowBulkInput(false);
+    setError('');
+  };
+
+  const removePlayer = (id) => {
+    setPlayers(players.filter(p => p.id !== id));
+  };
+
+  const clearAllPlayers = () => {
+    if (confirm("Deseja realmente apagar todos os jogadores?")) {
+      setPlayers([]);
+      setTeams([]);
+    }
+  };
+
+  const drawTeams = () => {
+    if (players.length < playersPerTeam) {
+      setError(`Você precisa de pelo menos ${playersPerTeam} jogadores.`);
+      return;
+    }
+
+    const goalkeepers = players.filter(p => p.isGoalkeeper);
+    const outfieldPlayers = players.filter(p => !p.isGoalkeeper);
+
+    const shuffle = (array) => [...array].sort(() => Math.random() - 0.5);
+    
+    const shuffledGK = shuffle(goalkeepers);
+    const shuffledOutfield = shuffle(outfieldPlayers);
+
+    const numTeams = Math.floor(players.length / playersPerTeam);
+    const newTeams = [];
+
+    for (let i = 0; i < numTeams; i++) {
+      const teamPlayers = [];
+      
+      if (shuffledGK.length > 0) {
+        teamPlayers.push(shuffledGK.pop());
+      }
+
+      while (teamPlayers.length < playersPerTeam && shuffledOutfield.length > 0) {
+        teamPlayers.push(shuffledOutfield.pop());
+      }
+
+      while (teamPlayers.length < playersPerTeam && shuffledGK.length > 0) {
+        teamPlayers.push(shuffledGK.pop());
+      }
+
+      if (teamPlayers.length > 0) {
+        newTeams.push({
+          id: i + 1,
+          name: `Time ${i + 1}`,
+          members: teamPlayers
+        });
+      }
+    }
+
+    const leftovers = [...shuffledGK, ...shuffledOutfield];
+    if (leftovers.length > 0) {
+      newTeams.push({
+        id: 'bench',
+        name: 'Próximos / Reservas',
+        members: leftovers
+      });
+    }
+
+    setTeams(newTeams);
+    setError('');
+    
+    setTimeout(() => {
+      document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
+      <header className="bg-green-700 text-white py-8 px-4 shadow-lg mb-8">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <Trophy className="w-8 h-8 text-yellow-400" />
+              Sorteador de Racha
+            </h1>
+            <p className="opacity-90 mt-1">Cole sua lista do WhatsApp e organize os times</p>
+          </div>
+          <div className="bg-green-800 px-4 py-2 rounded-2xl border border-green-600 flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            <span className="font-bold">{players.length} Atletas</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 grid gap-6 md:grid-cols-5">
+        
+        <div className="md:col-span-2 space-y-6">
+          {/* Alternar entre manual e bulk */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex border-b border-slate-100">
+              <button 
+                onClick={() => setShowBulkInput(false)}
+                className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${!showBulkInput ? 'text-green-700 bg-white' : 'text-slate-400 bg-slate-50 hover:bg-slate-100'}`}
+              >
+                <PlusCircle className="w-4 h-4" /> Individual
+              </button>
+              <button 
+                onClick={() => setShowBulkInput(true)}
+                className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${showBulkInput ? 'text-green-700 bg-white' : 'text-slate-400 bg-slate-50 hover:bg-slate-100'}`}
+              >
+                <ClipboardList className="w-4 h-4" /> Importar Lista
+              </button>
+            </div>
+
+            <div className="p-6">
+              {!showBulkInput ? (
+                <form onSubmit={addPlayer} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome do Jogador</label>
+                    <input 
+                      type="text"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      placeholder="Ex: Romário"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-green-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsGoalkeeper(!isGoalkeeper)}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold ${
+                        isGoalkeeper 
+                        ? 'bg-orange-50 border-orange-500 text-orange-700' 
+                        : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >
+                      <Shield className={`w-4 h-4 ${isGoalkeeper ? 'fill-orange-500' : ''}`} />
+                      {isGoalkeeper ? 'Goleiro' : 'Linha'}
+                    </button>
+                    <button type="submit" className="bg-slate-800 text-white px-6 rounded-xl font-bold hover:bg-slate-900 transition-colors">
+                      ADD
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Cole a lista do WhatsApp</label>
+                    <textarea 
+                      rows="6"
+                      value={bulkText}
+                      onChange={(e) => setBulkText(e.target.value)}
+                      placeholder="1. João&#10;2. Maria (G)&#10;3. Pedro Goleiro&#10;4. José"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-mono"
+                    ></textarea>
+                  </div>
+                  <div className="bg-blue-50 p-3 rounded-xl flex gap-2 items-start mb-2">
+                    <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-blue-700 leading-tight">
+                      Dica: Coloque <b>(G)</b> ou <b>Goleiro</b> ao lado do nome para identificar o goleiro automaticamente.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={importFromWhatsApp}
+                    className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-md"
+                  >
+                    Importar Jogadores
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Users className="text-blue-600 w-5 h-5" />
+                Presença
+              </h2>
+              {players.length > 0 && (
+                <button onClick={clearAllPlayers} className="text-[10px] uppercase font-bold text-red-400 hover:text-red-600">
+                  Limpar Tudo
+                </button>
+              )}
+            </div>
+            
+            <div className="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+              {players.length === 0 ? (
+                <div className="text-center py-10 text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl italic text-sm">
+                  Lista vazia
+                </div>
+              ) : (
+                players.map((player) => (
+                  <div key={player.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${player.isGoalkeeper ? 'bg-orange-100' : 'bg-slate-200'}`}>
+                        {player.isGoalkeeper ? (
+                          <Shield className="w-4 h-4 text-orange-600 fill-orange-500" />
+                        ) : (
+                          <UserIcon className="w-4 h-4 text-slate-500" />
+                        )}
+                      </div>
+                      <span className="font-semibold text-slate-700">{player.name}</span>
+                    </div>
+                    <button 
+                      onClick={() => removePlayer(player.id)}
+                      className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">Atletas por Time</label>
+                <span className="text-green-700 font-bold bg-green-50 px-2 py-1 rounded text-sm">{playersPerTeam} jogadores</span>
+              </div>
+              <input 
+                type="range" 
+                min="2" 
+                max="11" 
+                value={playersPerTeam}
+                onChange={(e) => setPlayersPerTeam(parseInt(e.target.value))}
+                className="w-full accent-green-600 mb-6"
+              />
+
+              <button 
+                onClick={drawTeams}
+                disabled={players.length < playersPerTeam}
+                className={`w-full py-4 rounded-2xl font-black text-lg shadow-xl flex items-center justify-center gap-3 transition-all ${
+                  players.length < playersPerTeam 
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                  : 'bg-green-600 text-white hover:bg-green-700 transform hover:-translate-y-1 active:shadow-2xl'
+                }`}
+              >
+                <Shuffle className="w-6 h-6" />
+                SORTEAR AGORA
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div id="results" className="md:col-span-3">
+          {error && (
+            <div className="bg-red-50 text-red-700 p-4 rounded-2xl mb-6 flex items-center gap-3 border border-red-100">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <p className="font-bold text-sm">{error}</p>
+            </div>
+          )}
+
+          {teams.length > 0 ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-black text-slate-800 italic uppercase">Equipes Formadas</h2>
+                <div className="h-px flex-1 mx-4 bg-slate-200 hidden sm:block"></div>
+                <button 
+                  onClick={() => setTeams([])}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600 underline"
+                >
+                  Refazer
+                </button>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {teams.map((team) => (
+                  <div key={team.id} className={`bg-white rounded-3xl shadow-sm border-2 overflow-hidden transition-all hover:shadow-md ${team.id === 'bench' ? 'border-dashed border-slate-200' : 'border-slate-100'}`}>
+                    <div className={`py-3 px-5 flex items-center justify-between ${team.id === 'bench' ? 'bg-slate-100' : 'bg-slate-800 text-white'}`}>
+                      <span className="font-black italic uppercase tracking-wider">{team.name}</span>
+                      <span className="text-[10px] opacity-70">{team.members.length} players</span>
+                    </div>
+                    <div className="p-4 space-y-1">
+                      {team.members.map((member, idx) => (
+                        <div key={member.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] text-slate-300 font-mono w-3">{idx + 1}</span>
+                            <span className="font-bold text-slate-700">{member.name}</span>
+                          </div>
+                          {member.isGoalkeeper && (
+                            <span className="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">
+                              GOL
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Sugestão de Chaveamento */}
+              {teams.filter(t => t.id !== 'bench').length >= 2 && (
+                <div className="mt-10 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5">
+                     <Trophy className="w-24 h-24" />
+                  </div>
+                  <h3 className="font-black italic uppercase text-slate-800 mb-6 flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    Ordem dos Jogos
+                  </h3>
+                  <div className="space-y-3 relative z-10">
+                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div className="bg-green-600 text-white text-[10px] px-2 py-1 rounded font-bold uppercase">Jogo 1</div>
+                      <span className="flex-1 text-center font-black italic">TIME 1</span>
+                      <span className="text-slate-300 font-black italic">X</span>
+                      <span className="flex-1 text-center font-black italic">TIME 2</span>
+                    </div>
+                    {teams.length > 3 && teams[2].id !== 'bench' && (
+                      <div className="flex items-center gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100 border-dashed">
+                        <div className="bg-slate-400 text-white text-[10px] px-2 py-1 rounded font-bold uppercase">Jogo 2</div>
+                        <span className="flex-1 text-center font-bold text-slate-400 italic">GANHADOR J1</span>
+                        <span className="text-slate-200 font-black italic">X</span>
+                        <span className="flex-1 text-center font-black italic text-slate-700">TIME 3</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-slate-300 py-24 px-10 text-center border-4 border-dashed border-slate-100 rounded-[40px]">
+              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                <Shuffle className="w-12 h-12 opacity-20" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-400">Pronto para o racha?</h3>
+              <p className="max-w-xs mt-2 text-sm">Adicione os jogadores à esquerda ou cole sua lista do WhatsApp para gerar o chaveamento.</p>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}} />
+    </div>
+  );
+};
+
+export default App;
+
