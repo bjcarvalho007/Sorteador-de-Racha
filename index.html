@@ -3,273 +3,839 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sorteador de Racha - WhatsApp Import</title>
-    <!-- Tailwind CSS CDN -->
+    <title>FUT•PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & Babel CDNs -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .team-card { transition: all 0.2s ease; }
+        
+        .fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+            animation-delay: 2.5s;
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translate(-50%, 0); }
+            to { opacity: 0; transform: translate(-50%, 20px); }
+        }
+
+        .dragging {
+            opacity: 0.5;
+            transform: scale(1.02);
+            border-color: #f59e0b !important;
+            background-color: #fffbeb !important;
+        }
+        
+        .drop-target {
+            border-top: 4px solid #f59e0b !important;
+        }
+
+        .pos-input {
+            width: 45px;
+            text-align: center;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            font-weight: 900;
+            color: #b45309;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .timer-float {
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .playing-pulse-green {
+            animation: pulse-green 2s infinite;
+        }
+        .playing-pulse-blue {
+            animation: pulse-blue 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(22, 163, 74, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+        }
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        // Componente de Ícones Simulado (usando Lucide injetado no window)
-        const Icon = ({ name, className }) => {
-            const iconRef = React.useRef(null);
-            useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            }, [name]);
-            return <i data-lucide={name} className={className}></i>;
+        const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+        const Icons = {
+            Trophy: ({ size = 24, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55-.47.98-.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+            ),
+            Users: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            ),
+            X: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            ),
+            Plus: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            ),
+            Minus: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            ),
+            Shuffle: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></svg>
+            ),
+            List: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            ),
+            Layout: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            ),
+            Shield: ({ size = 16, className = "" }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+            ),
+            ArrowUp: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+            ),
+            ArrowDown: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 12-7 7-7-7"/><path d="M12 5v14"/></svg>
+            ),
+            ArrowDoubleUp: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 10 7-7 7 7"/><path d="m5 17 7-7 7 7"/></svg>
+            ),
+            Grip: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+            ),
+            Play: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            ),
+            Pause: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            ),
+            Info: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            ),
+            RotateCcw: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            ),
+            AlertTriangle: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            ),
+            CheckCircle: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            ),
+            Activity: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            ),
+            Clock: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            )
         };
 
         const App = () => {
-            const [players, setPlayers] = useState([]);
+            const [players, setPlayers] = useState([]); 
+            const [goalkeepers, setGoalkeepers] = useState([]); 
             const [newPlayerName, setNewPlayerName] = useState('');
-            const [isGoalkeeper, setIsGoalkeeper] = useState(false);
             const [playersPerTeam, setPlayersPerTeam] = useState(5);
             const [bulkText, setBulkText] = useState('');
             const [showBulkInput, setShowBulkInput] = useState(false);
+            const [hasGoalkeepers, setHasGoalkeepers] = useState(null); 
             const [teams, setTeams] = useState([]);
+            const [activeTab, setActiveTab] = useState('players'); 
             const [error, setError] = useState('');
+            const [lastMethod, setLastMethod] = useState(''); 
+            const [isManipulatingOrder, setIsManipulatingOrder] = useState(false);
+            const [editingPosId, setEditingPosId] = useState(null);
+
+            const [selectedTime, setSelectedTime] = useState(10);
+            const [timeLeft, setTimeLeft] = useState(10 * 60);
+            const [timerActive, setTimerActive] = useState(false);
+            const [showResetConfirm, setShowResetConfirm] = useState(false);
+            const [showMatchResultModal, setShowMatchResultModal] = useState(false);
+            
+            const dragItem = useRef();
+            const dragOverItem = useRef();
+
+            const teamStats = useMemo(() => {
+                const totalPlayers = players.length;
+                const complete = Math.floor(totalPlayers / playersPerTeam);
+                const remainder = totalPlayers % playersPerTeam;
+                return {
+                    total: players.length + goalkeepers.length,
+                    gks: goalkeepers.length,
+                    complete,
+                    incomplete: remainder > 0 ? 1 : 0,
+                    needed: (playersPerTeam - remainder) % playersPerTeam
+                };
+            }, [players, goalkeepers, playersPerTeam]);
+
+            useEffect(() => {
+                if (error) {
+                    const timer = setTimeout(() => {
+                        setError('');
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [error]);
+
+            useEffect(() => {
+                let interval = null;
+                if (timerActive && timeLeft > 0) {
+                    interval = setInterval(() => {
+                        setTimeLeft(prev => prev - 1);
+                    }, 1000);
+                } else if (timeLeft === 0 && timerActive) {
+                    setTimerActive(false);
+                    setShowMatchResultModal(true);
+                    if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200]);
+                }
+                return () => clearInterval(interval);
+            }, [timerActive, timeLeft]);
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const resetTimer = () => {
+                setTimeLeft(selectedTime * 60);
+                setTimerActive(false);
+            };
+
+            const handleTimeSelect = (t) => {
+                setSelectedTime(t);
+                setTimeLeft(t * 60);
+                setTimerActive(false);
+            };
+
+            const cleanPlayerName = (name) => {
+                return name
+                    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F1E6}-\u{1F1FF}\u{1F170}-\u{1F19A}]/gu, '')
+                    .replace(/^\s*\d+[\s.\-)\s]*/, '')
+                    .replace(/\(GK\)|\(GL\)|GOLEIRO|GK|GL|GOLEIROS|GOLEIRO:/gi, '')
+                    .replace(/\[\d{2}:\d{2}\]|~|@/g, '')
+                    .replace(/^[\s\-\.\:\u2000-\u206F\u2E00-\u2E7F\\'!"#$%&()*+,\/;<=>?@\[\]^_`{|}~]*/, '')
+                    .trim();
+            };
 
             const addPlayer = (e) => {
                 e.preventDefault();
                 if (!newPlayerName.trim()) return;
-                const player = {
-                    id: crypto.randomUUID(),
-                    name: newPlayerName.trim(),
-                    isGoalkeeper: isGoalkeeper
-                };
-                setPlayers([...players, player]);
+                const cleanedName = cleanPlayerName(newPlayerName);
+                if (!cleanedName || cleanedName.length < 2) return;
+                setPlayers(prev => [...prev, { id: generateId(), name: cleanedName }]);
                 setNewPlayerName('');
-                setIsGoalkeeper(false);
-                setError('');
             };
 
             const importFromWhatsApp = () => {
                 if (!bulkText.trim()) return;
                 const lines = bulkText.split('\n');
                 const newPlayers = [];
-                lines.forEach(line => {
-                    let cleanedName = line.replace(/^\d+[\s.-]*/, '').trim();
-                    if (cleanedName) {
-                        const isGK = /\((g|gol)\)|\[(g|gol)\]|goleiro/i.test(cleanedName);
-                        cleanedName = cleanedName.replace(/\s*(\((g|gol)\)|\[(g|gol)\]|goleiro)\s*/i, '').trim();
-                        if (cleanedName) {
-                            newPlayers.push({
-                                id: crypto.randomUUID(),
-                                name: cleanedName,
-                                isGoalkeeper: isGK
-                            });
+                const blacklist = ['ATENÇÃO', 'HORÁRIO', 'HOJE', 'ARENA', 'DETRAN', 'OBS:', 'PATROCINADO', 'DIVIDIDO', 'LISTA RESERVA', 'DESISTÊNCIA', 'SEQUÊNCIA', 'PRINCIPAL', 'LANÇAREMOS', 'CASO', 'RESTANTE', 'LISTA', 'PAGOU', 'CONFIRMADOS', 'VALOR', 'PIX', 'TAXA', 'MENSALISTA'];
+
+                lines.forEach((line) => {
+                    const upperLine = line.toUpperCase().trim();
+                    if (!upperLine || upperLine.length < 2) return;
+                    if (blacklist.some(word => upperLine.includes(word))) return;
+                    const cleanedName = cleanPlayerName(line);
+                    if (cleanedName && cleanedName.length >= 2 && /[a-zA-Zá-úÁ-Ú]/.test(cleanedName)) {
+                        if (!newPlayers.some(p => p.name.toLowerCase() === cleanedName.toLowerCase())) {
+                            newPlayers.push({ id: generateId() + Math.random(), name: cleanedName });
                         }
                     }
                 });
-                setPlayers([...players, ...newPlayers]);
-                setBulkText('');
-                setShowBulkInput(false);
-                setError('');
-            };
 
-            const removePlayer = (id) => {
-                setPlayers(players.filter(p => p.id !== id));
-            };
-
-            const clearAllPlayers = () => {
-                if (confirm("Deseja realmente apagar todos os jogadores?")) {
-                    setPlayers([]);
-                    setTeams([]);
+                if (newPlayers.length > 0) {
+                    setPlayers(prev => [...prev, ...newPlayers]);
+                    setBulkText('');
+                    setShowBulkInput(false);
+                } else {
+                    setError("Nenhum nome válido encontrado.");
                 }
             };
 
-            const drawTeams = () => {
-                if (players.length < playersPerTeam) {
-                    setError(`Você precisa de pelo menos ${playersPerTeam} jogadores.`);
+            const toggleToGk = (player) => {
+                setPlayers(prev => prev.filter(p => p.id !== player.id));
+                setGoalkeepers(prev => [...prev, player]);
+            };
+
+            const toggleToLine = (gk) => {
+                setGoalkeepers(prev => prev.filter(p => p.id !== gk.id));
+                setPlayers(prev => [...prev, gk]);
+            };
+
+            const removePlayer = (id, type) => {
+                if (type === 'gk') setGoalkeepers(prev => prev.filter(p => p.id !== id));
+                else setPlayers(prev => prev.filter(p => p.id !== id));
+            };
+
+            const movePlayer = (index, direction) => {
+                const newPlayers = [...players];
+                const targetIndex = index + direction;
+                if (targetIndex < 0 || targetIndex >= newPlayers.length) return;
+                [newPlayers[index], newPlayers[targetIndex]] = [newPlayers[targetIndex], newPlayers[index]];
+                setPlayers(newPlayers);
+            };
+
+            const movePlayerToTop = (index) => {
+                const newPlayers = [...players];
+                const player = newPlayers.splice(index, 1)[0];
+                newPlayers.unshift(player);
+                setPlayers(newPlayers);
+            };
+
+            const movePlayerToPos = (fromIndex, toPosStr) => {
+                const toIndex = parseInt(toPosStr) - 1;
+                if (isNaN(toIndex) || toIndex < 0 || toIndex >= players.length || toIndex === fromIndex) {
+                    setEditingPosId(null);
                     return;
                 }
-                const goalkeepers = players.filter(p => p.isGoalkeeper);
-                const outfieldPlayers = players.filter(p => !p.isGoalkeeper);
-                const shuffle = (array) => [...array].sort(() => Math.random() - 0.5);
-                const shuffledGK = shuffle(goalkeepers);
-                const shuffledOutfield = shuffle(outfieldPlayers);
-                const numTeams = Math.floor(players.length / playersPerTeam);
-                const newTeams = [];
+                const newPlayers = [...players];
+                const [player] = newPlayers.splice(fromIndex, 1);
+                newPlayers.splice(toIndex, 0, player);
+                setPlayers(newPlayers);
+                setEditingPosId(null);
+            };
 
-                for (let i = 0; i < numTeams; i++) {
-                    const teamPlayers = [];
-                    if (shuffledGK.length > 0) teamPlayers.push(shuffledGK.pop());
-                    while (teamPlayers.length < playersPerTeam && shuffledOutfield.length > 0) {
-                        teamPlayers.push(shuffledOutfield.pop());
-                    }
-                    while (teamPlayers.length < playersPerTeam && shuffledGK.length > 0) {
-                        teamPlayers.push(shuffledGK.pop());
-                    }
-                    if (teamPlayers.length > 0) {
-                        newTeams.push({ id: i + 1, name: `Time ${i + 1}`, members: teamPlayers });
-                    }
-                }
+            const handleDragStart = (e, index) => {
+                dragItem.current = index;
+                e.currentTarget.classList.add('dragging');
+            };
 
-                const leftovers = [...shuffledGK, ...shuffledOutfield];
-                if (leftovers.length > 0) {
-                    newTeams.push({ id: 'bench', name: 'Próximos / Reservas', members: leftovers });
-                }
-                setTeams(newTeams);
+            const handleDragEnter = (e, index) => {
+                dragOverItem.current = index;
+                e.currentTarget.classList.add('drop-target');
+            };
+
+            const handleDragLeave = (e) => e.currentTarget.classList.remove('drop-target');
+
+            const handleDragEnd = (e) => {
+                e.currentTarget.classList.remove('dragging');
+                const newPlayers = [...players];
+                const draggedItemContent = newPlayers.splice(dragItem.current, 1)[0];
+                newPlayers.splice(dragOverItem.current, 0, draggedItemContent);
+                dragItem.current = null;
+                dragOverItem.current = null;
+                setPlayers(newPlayers);
+                document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+            };
+
+            const generateTeams = (randomize = true) => {
                 setError('');
-                setTimeout(() => {
-                    document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
+                if (players.length < playersPerTeam) {
+                    setError(`Precisas de pelo menos ${playersPerTeam} jogadores.`);
+                    return;
+                }
+                setLastMethod(randomize ? 'random' : 'order');
+                setIsManipulatingOrder(false);
+                let playerPool = randomize ? [...players].sort(() => Math.random() - 0.5) : [...players]; 
+                const numTeams = Math.ceil(players.length / playersPerTeam);
+                const generatedTeams = [];
+                
+                for (let i = 0; i < numTeams; i++) {
+                    const teamMembers = [];
+                    for (let j = 0; j < playersPerTeam; j++) {
+                        if (playerPool.length > 0) teamMembers.push(playerPool.shift());
+                    }
+                    generatedTeams.push({ 
+                        id: `team-${generateId()}`, 
+                        name: `Equipe ${i + 1}`, 
+                        members: teamMembers,
+                        isComplete: teamMembers.length === playersPerTeam
+                    });
+                }
+                setTeams(generatedTeams);
+            };
+
+            const updateTeamNames = (currentTeams) => {
+                return currentTeams.map((team, index) => ({
+                    ...team,
+                    name: `Equipe ${index + 1}`
+                }));
+            };
+
+            const concludeMatch = (winnerIndex) => {
+                const loserIndex = winnerIndex === 0 ? 1 : 0;
+                let currentTeams = [...teams];
+                
+                const winnerTeam = { ...currentTeams[winnerIndex] };
+                const loserTeam = { ...currentTeams[loserIndex] };
+
+                currentTeams.splice(0, 2);
+                currentTeams.unshift(winnerTeam);
+
+                let playersToQueue = [...loserTeam.members];
+                
+                if (currentTeams.length > 0) {
+                    const lastTeamIndex = currentTeams.length - 1;
+                    const lastTeam = { ...currentTeams[lastTeamIndex] };
+                    const vacancies = playersPerTeam - lastTeam.members.length;
+                    
+                    if (vacancies > 0) {
+                        const filling = playersToQueue.splice(0, vacancies);
+                        lastTeam.members = [...lastTeam.members, ...filling];
+                        currentTeams[lastTeamIndex] = lastTeam;
+                    }
+                }
+
+                while (playersToQueue.length > 0) {
+                    const nextBatch = playersToQueue.splice(0, playersPerTeam);
+                    currentTeams.push({
+                        id: generateId(),
+                        name: "",
+                        members: nextBatch
+                    });
+                }
+
+                setTeams(updateTeamNames(currentTeams));
+                resetTimer();
+                setShowMatchResultModal(false);
+            };
+
+            const concludeEmpate = () => {
+                let currentTeams = [...teams];
+                const teamA = currentTeams.shift();
+                const teamB = currentTeams.shift();
+                let pool = [...teamA.members, ...teamB.members];
+
+                if (currentTeams.length > 0) {
+                    const lastTeamIndex = currentTeams.length - 1;
+                    const lastTeam = { ...currentTeams[lastTeamIndex] };
+                    const vacancies = playersPerTeam - lastTeam.members.length;
+                    if (vacancies > 0) {
+                        const filling = pool.splice(0, vacancies);
+                        lastTeam.members = [...lastTeam.members, ...filling];
+                        currentTeams[lastTeamIndex] = lastTeam;
+                    }
+                }
+
+                while (pool.length > 0) {
+                    const nextBatch = pool.splice(0, playersPerTeam);
+                    currentTeams.push({
+                        id: generateId(),
+                        name: "",
+                        members: nextBatch
+                    });
+                }
+
+                setTeams(updateTeamNames(currentTeams));
+                resetTimer();
+                setShowMatchResultModal(false);
+            };
+
+            const resetEverything = () => {
+                setPlayers([]);
+                setGoalkeepers([]);
+                setTeams([]);
+                setHasGoalkeepers(null);
+                setTimerActive(false);
+                setTimeLeft(selectedTime * 60);
+                setShowResetConfirm(false);
+                setActiveTab('players');
+            };
+
+            const updatePlayersPerTeam = (delta) => {
+                const newVal = playersPerTeam + delta;
+                if (newVal >= 2 && newVal <= 11) setPlayersPerTeam(newVal);
             };
 
             return (
-                <div className="min-h-screen pb-20">
-                    <header className="bg-green-700 text-white py-8 px-4 shadow-lg mb-8">
-                        <div className="max-w-4xl mx-auto flex items-center justify-between">
-                            <div>
-                                <h1 className="text-3xl font-bold flex items-center gap-2">
-                                    <Icon name="trophy" className="w-8 h-8 text-yellow-400" />
-                                    Sorteador de Racha
-                                </h1>
-                                <p className="opacity-90 mt-1">Cole sua lista do WhatsApp e organize os times</p>
+                <div className="min-h-screen pb-24">
+                    {/* CABEÇALHO DASHBOARD */}
+                    <header className="bg-slate-900 text-white pt-6 pb-8 px-4 shadow-2xl border-b-4 border-green-600 mb-6">
+                        <div className="max-w-4xl mx-auto space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-green-600 rounded-xl shadow-lg shadow-green-900/20">
+                                        <Icons.Trophy size={28} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-black uppercase italic tracking-tighter text-white leading-none">FUT•PRO</h1>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-green-500 mt-1">Organização em seus jogos</p>
+                                    </div>
+                                </div>
+                                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-full border border-slate-700">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sistema Online</span>
+                                </div>
                             </div>
-                            <div className="bg-green-800 px-4 py-2 rounded-2xl border border-green-600 flex items-center gap-2">
-                                <Icon name="users" className="w-5 h-5" />
-                                <span className="font-bold">{players.length} Atletas</span>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <Icons.Users />
+                                        <span className="text-xl font-black text-white">{teamStats.total}</span>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Total Atletas</p>
+                                </div>
+                                <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between mb-1 text-blue-400">
+                                        <Icons.Shield size={20} />
+                                        <span className="text-xl font-black">{teamStats.gks}</span>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Goleiros</p>
+                                </div>
+                                <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+                                    <div className="flex items-center justify-between mb-1 text-green-400">
+                                        <Icons.CheckCircle />
+                                        <span className="text-xl font-black">{teamStats.complete}</span>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Times Prontos</p>
+                                </div>
+                                <div className={`p-4 rounded-2xl border backdrop-blur-sm transition-colors ${teamStats.incomplete > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-800/50 border-slate-700/50'}`}>
+                                    <div className={`flex items-center justify-between mb-1 ${teamStats.incomplete > 0 ? 'text-amber-500' : 'text-slate-500'}`}>
+                                        <Icons.AlertTriangle />
+                                        <span className="text-xl font-black">{teamStats.incomplete}</span>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                                        {teamStats.incomplete > 0 ? `Incompleto (Faltam ${teamStats.needed})` : 'Sem Pendências'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </header>
 
-                    <main className="max-w-4xl mx-auto px-4 grid gap-6 md:grid-cols-5">
-                        <div className="md:col-span-2 space-y-6">
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                <div className="flex border-b border-slate-100">
-                                    <button onClick={() => setShowBulkInput(false)} className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 ${!showBulkInput ? 'text-green-700 bg-white' : 'text-slate-400 bg-slate-50'}`}>
-                                        <Icon name="plus-circle" className="w-4 h-4" /> Individual
-                                    </button>
-                                    <button onClick={() => setShowBulkInput(true)} className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 ${showBulkInput ? 'text-green-700 bg-white' : 'text-slate-400 bg-slate-50'}`}>
-                                        <Icon name="clipboard-list" className="w-4 h-4" /> Importar Lista
-                                    </button>
+                    <main className="max-w-4xl mx-auto px-4 relative">
+                        <nav className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200 mb-4">
+                            <button onClick={() => setActiveTab('players')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-black text-[9px] transition-all uppercase tracking-widest ${activeTab === 'players' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>
+                                <Icons.Users /> Listagem
+                            </button>
+                            <button onClick={() => setActiveTab('teams')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-black text-[9px] transition-all uppercase tracking-widest ${activeTab === 'teams' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>
+                                <Icons.Layout /> Equipes
+                            </button>
+                            <button onClick={() => setActiveTab('match')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-black text-[9px] transition-all uppercase tracking-widest ${activeTab === 'match' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>
+                                <Icons.Play /> Em Jogo
+                            </button>
+                        </nav>
+
+                        {activeTab === 'players' && (
+                            <div className="grid gap-4 md:grid-cols-5 animate-in fade-in slide-in-from-bottom-4">
+                                <div className="md:col-span-2 space-y-4">
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="flex border-b border-slate-100 bg-slate-50">
+                                            <button onClick={() => setShowBulkInput(false)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors ${!showBulkInput ? 'text-green-700 bg-white border-b-2 border-green-600' : 'text-slate-600 hover:bg-slate-100'}`}>Incluir jogador</button>
+                                            <button onClick={() => setShowBulkInput(true)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors ${showBulkInput ? 'text-green-700 bg-white border-b-2 border-green-600' : 'text-slate-600 hover:bg-slate-100'}`}>Sua lista do WhatsApp</button>
+                                        </div>
+                                        <div className="p-4">
+                                            {!showBulkInput ? (
+                                                <form onSubmit={addPlayer} className="flex gap-2">
+                                                    <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="Nome..." className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500/20" />
+                                                    <button type="submit" className="bg-green-600 text-white px-3 rounded-lg font-black text-xs uppercase shadow-sm">ADD</button>
+                                                </form>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    <textarea rows="4" value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder="Cole a lista..." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium custom-scrollbar focus:outline-none focus:ring-2 focus:ring-green-500/20"></textarea>
+                                                    <button onClick={importFromWhatsApp} className="w-full bg-green-600 text-white py-2 rounded-lg font-black text-xs uppercase hover:bg-green-700 shadow-md">Extrair Nomes</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {(players.length > 0 || goalkeepers.length > 0) && hasGoalkeepers === null && (
+                                        <div className="bg-blue-600 p-4 rounded-2xl shadow-xl text-center">
+                                            <h3 className="text-white font-black uppercase italic tracking-wider text-[10px] mb-3">Goleiros fixos?</h3>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => setHasGoalkeepers(true)} className="bg-white text-blue-700 py-1.5 rounded-lg font-black text-[9px] uppercase">Sim</button>
+                                                <button onClick={() => setHasGoalkeepers(false)} className="bg-blue-800/50 text-white py-1.5 rounded-lg font-black text-[9px] uppercase border border-blue-400/30">Não</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                        <div className="flex flex-col gap-3">
+                                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-tight text-center">Jogadores por equipe</label>
+                                            <div className="flex items-center justify-center gap-4">
+                                                <button onClick={() => updatePlayersPerTeam(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors active:scale-90 disabled:opacity-30" disabled={playersPerTeam <= 2}><Icons.Minus /></button>
+                                                <div className="flex flex-col items-center min-w-[60px]">
+                                                    <span className="text-3xl font-black text-green-600 italic leading-none">{playersPerTeam}</span>
+                                                    <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Atletas</span>
+                                                </div>
+                                                <button onClick={() => updatePlayersPerTeam(1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors active:scale-90 disabled:opacity-30" disabled={playersPerTeam >= 11}><Icons.Plus /></button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="p-6">
-                                    {!showBulkInput ? (
-                                        <form onSubmit={addPlayer} className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome do Jogador</label>
-                                                <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="Ex: Romário" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-green-500 outline-none transition-all" />
+                                <section className="md:col-span-3">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h2 className="font-black text-slate-800 uppercase text-[10px] tracking-widest flex items-center gap-2">
+                                                <Icons.Users /> Jogadores ({players.length + goalkeepers.length})
+                                            </h2>
+                                            <button onClick={() => setShowResetConfirm(true)} className="text-[9px] font-black text-red-500 uppercase hover:underline">Limpar Tudo</button>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {goalkeepers.map(gk => (
+                                                <div key={gk.id} onClick={() => toggleToLine(gk)} className="flex items-center justify-between p-2.5 bg-blue-50 rounded-lg border border-blue-100 group cursor-pointer transition-colors hover:bg-blue-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-6 h-6 flex items-center justify-center bg-blue-600 text-white text-[8px] font-black rounded italic">GK</span>
+                                                        <span className="font-bold text-blue-900 text-xs uppercase italic">{gk.name}</span>
+                                                    </div>
+                                                    <button onClick={(e) => { e.stopPropagation(); removePlayer(gk.id, 'gk'); }} className="text-slate-400 hover:text-red-500 transition-colors"><Icons.X /></button>
+                                                </div>
+                                            ))}
+                                            {players.map((p, idx) => (
+                                                <div key={p.id} onClick={() => hasGoalkeepers === true ? toggleToGk(p) : null} className={`flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-transparent group transition-colors ${hasGoalkeepers === true ? 'hover:bg-blue-50 hover:border-blue-200 cursor-pointer' : ''}`}>
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        <span className="text-xs font-black text-slate-400 min-w-[20px]">{idx + 1}º</span>
+                                                        <span className="font-bold text-slate-800 text-xs uppercase truncate">{p.name}</span>
+                                                    </div>
+                                                    <button onClick={(e) => { e.stopPropagation(); removePlayer(p.id, 'line'); }} className="text-slate-300 hover:text-red-500 flex-shrink-0 transition-colors"><Icons.X /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {activeTab === 'teams' && (
+                            <div className="animate-in fade-in zoom-in-95 space-y-4">
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                    <div className="grid grid-cols-2 gap-2 mb-4">
+                                        <button onClick={() => generateTeams(true)} className="bg-green-600 text-white py-3 rounded-xl font-black text-[10px] tracking-widest shadow-md hover:bg-green-700 flex items-center justify-center gap-2 uppercase transition-transform active:scale-95">
+                                            <Icons.Shuffle /> Organizar por Sorteio
+                                        </button>
+                                        <button onClick={() => setIsManipulatingOrder(!isManipulatingOrder)} className={`py-3 rounded-xl font-black text-[10px] tracking-widest shadow-md flex items-center justify-center gap-2 uppercase transition-all active:scale-95 ${isManipulatingOrder ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                            <Icons.List /> {isManipulatingOrder ? "Fechar" : "Organizar por Ordem"}
+                                        </button>
+                                    </div>
+                                    {isManipulatingOrder && (
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-amber-100 animate-in slide-in-from-top-2">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h4 className="text-[10px] font-black text-amber-800 uppercase italic">Organizar por Ordem de Chegada</h4>
+                                                <button onClick={() => generateTeams(false)} className="bg-amber-500 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase hover:bg-amber-600 shadow-sm">Gerar na Ordem</button>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button type="button" onClick={() => setIsGoalkeeper(!isGoalkeeper)} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold ${isGoalkeeper ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-white border-slate-100 text-slate-400'}`}>
-                                                    <Icon name="shield" className="w-4 h-4" /> {isGoalkeeper ? 'Goleiro' : 'Linha'}
-                                                </button>
-                                                <button type="submit" className="bg-slate-800 text-white px-6 rounded-xl font-bold hover:bg-slate-900">ADD</button>
+                                            <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {players.map((p, idx) => (
+                                                    <div key={p.id} draggable onDragStart={(e) => handleDragStart(e, idx)} onDragEnter={(e) => handleDragEnter(e, idx)} onDragLeave={handleDragLeave} onDragEnd={handleDragEnd} onDragOver={(e) => e.preventDefault()} className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 shadow-sm group">
+                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                            <div className="p-1 cursor-grab active:cursor-grabbing"><Icons.Grip /></div>
+                                                            {editingPosId === p.id ? (
+                                                                <input autoFocus type="number" className="pos-input text-xs h-6" onBlur={(e) => movePlayerToPos(idx, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && movePlayerToPos(idx, e.target.value)} />
+                                                            ) : (
+                                                                <button onClick={() => setEditingPosId(p.id)} className="text-xs font-black text-amber-500 w-6 bg-amber-50 rounded italic">{idx + 1}º</button>
+                                                            )}
+                                                            <span className="text-xs font-bold uppercase text-slate-800 truncate">{p.name}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => movePlayerToTop(idx)} className="p-1 bg-amber-50 text-amber-600 rounded transition-colors hover:bg-amber-100"><Icons.ArrowDoubleUp /></button>
+                                                            <button disabled={idx === 0} onClick={() => movePlayer(idx, -1)} className="p-1 bg-slate-100 text-slate-400 rounded disabled:opacity-30"><Icons.ArrowUp /></button>
+                                                            <button disabled={idx === players.length - 1} onClick={() => movePlayer(idx, 1)} className="p-1 bg-slate-100 text-slate-400 rounded disabled:opacity-30"><Icons.ArrowDown /></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        </form>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            <textarea rows="6" value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder="1. João&#10;2. Maria (G)&#10;3. Pedro Goleiro" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-green-500 outline-none text-sm font-mono"></textarea>
-                                            <button onClick={importFromWhatsApp} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-md">Importar Jogadores</button>
                                         </div>
                                     )}
                                 </div>
-                            </div>
-
-                            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                        <Icon name="users" className="text-blue-600 w-5 h-5" /> Presença
-                                    </h2>
-                                    {players.length > 0 && <button onClick={clearAllPlayers} className="text-[10px] uppercase font-bold text-red-400">Limpar Tudo</button>}
-                                </div>
-                                <div className="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                                    {players.length === 0 ? <div className="text-center py-10 text-slate-300 italic text-sm">Lista vazia</div> : players.map(p => (
-                                        <div key={p.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl group hover:bg-white border border-transparent hover:border-slate-200">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${p.isGoalkeeper ? 'bg-orange-100' : 'bg-slate-200'}`}>
-                                                    <Icon name={p.isGoalkeeper ? "shield" : "user"} className={`w-4 h-4 ${p.isGoalkeeper ? 'text-orange-600' : 'text-slate-500'}`} />
-                                                </div>
-                                                <span className="font-semibold text-slate-700">{p.name}</span>
-                                            </div>
-                                            <button onClick={() => removePlayer(p.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="trash-2" className="w-4 h-4" /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-6 pt-6 border-t border-slate-100">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="text-xs font-bold text-slate-400 uppercase">Atletas por Time</label>
-                                        <span className="text-green-700 font-bold bg-green-50 px-2 py-1 rounded text-sm">{playersPerTeam}</span>
-                                    </div>
-                                    <input type="range" min="2" max="11" value={playersPerTeam} onChange={(e) => setPlayersPerTeam(parseInt(e.target.value))} className="w-full accent-green-600 mb-6" />
-                                    <button onClick={drawTeams} disabled={players.length < playersPerTeam} className={`w-full py-4 rounded-2xl font-black text-lg shadow-xl flex items-center justify-center gap-3 ${players.length < playersPerTeam ? 'bg-slate-100 text-slate-400' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                                        <Icon name="shuffle" className="w-6 h-6" /> SORTEAR AGORA
-                                    </button>
-                                </div>
-                            </section>
-                        </div>
-
-                        <div id="results" className="md:col-span-3">
-                            {error && <div className="bg-red-50 text-red-700 p-4 rounded-2xl mb-6 flex items-center gap-3 border border-red-100 font-bold text-sm"><Icon name="alert-circle" className="w-5 h-5" />{error}</div>}
-                            {teams.length > 0 ? (
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <h2 className="text-2xl font-black text-slate-800 italic uppercase">Equipes Formadas</h2>
-                                        <button onClick={() => setTeams([])} className="text-xs font-bold text-slate-400 underline">Refazer</button>
-                                    </div>
-                                    <div className="grid gap-4 sm:grid-cols-2">
+                                {teams.length > 0 && !isManipulatingOrder && (
+                                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                                         {teams.map((team) => (
-                                            <div key={team.id} className={`bg-white rounded-3xl shadow-sm border-2 overflow-hidden ${team.id === 'bench' ? 'border-dashed border-slate-200 opacity-80' : 'border-slate-100'}`}>
-                                                <div className={`py-3 px-5 flex items-center justify-between ${team.id === 'bench' ? 'bg-slate-100' : 'bg-slate-800 text-white'}`}>
-                                                    <span className="font-black italic uppercase tracking-wider">{team.name}</span>
-                                                    <span className="text-[10px] opacity-70">{team.members.length} players</span>
+                                            <div key={team.id} className={`team-card bg-white rounded-2xl shadow-sm border overflow-hidden ${team.members.length < playersPerTeam ? 'border-dashed border-slate-300' : 'border-slate-100'}`}>
+                                                <div className={`py-2 px-4 flex items-center justify-between text-white ${team.members.length < playersPerTeam ? 'bg-slate-500' : lastMethod === 'random' ? 'bg-green-700' : 'bg-amber-600'}`}>
+                                                    <span className="font-black uppercase text-[9px] italic tracking-widest">{team.name}</span>
+                                                    {team.members.length < playersPerTeam && <span className="text-[8px] font-bold opacity-75">Incompleta</span>}
                                                 </div>
-                                                <div className="p-4 space-y-1">
-                                                    {team.members.map((member, idx) => (
-                                                        <div key={member.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-[10px] text-slate-300 font-mono w-3">{idx + 1}</span>
-                                                                <span className="font-bold text-slate-700">{member.name}</span>
+                                                <div className="p-3">
+                                                    <div className="grid grid-cols-1 gap-1">
+                                                        {team.members.map((member, idx) => (
+                                                            <div key={member.id} className="p-2 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-bold uppercase text-slate-700 truncate flex items-center gap-2">
+                                                                <span className="opacity-30 text-[8px] font-black w-3">{idx + 1}</span>
+                                                                {member.name}
                                                             </div>
-                                                            {member.isGoalkeeper && <span className="text-[9px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-black uppercase">GOL</span>}
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                    {teams.filter(t => t.id !== 'bench').length >= 2 && (
-                                        <div className="mt-10 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                            <h3 className="font-black italic uppercase text-slate-800 mb-6 flex items-center gap-2"><Icon name="trophy" className="w-5 h-5 text-yellow-500" /> Ordem dos Jogos</h3>
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                                    <div className="bg-green-600 text-white text-[10px] px-2 py-1 rounded font-bold uppercase">Jogo 1</div>
-                                                    <span className="flex-1 text-center font-black italic">TIME 1</span>
-                                                    <span className="text-slate-300 font-black italic">X</span>
-                                                    <span className="flex-1 text-center font-black italic">TIME 2</span>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'match' && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 space-y-4">
+                                {teams.length >= 2 ? (
+                                    <div className="flex flex-col items-center gap-4">
+                                        
+                                        {/* CRONÔMETRO COMPACTO E PROFISSIONAL */}
+                                        <div className="w-full bg-slate-900 rounded-[2rem] p-4 shadow-xl border-b-4 border-green-600">
+                                            <div className="flex items-center justify-between gap-4">
+                                                {/* Tempos à esquerda */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    {[5, 7, 8, 10].map(t => (
+                                                        <button key={t} onClick={() => handleTimeSelect(t)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${selectedTime === t ? 'bg-green-600 text-white border-green-400' : 'bg-slate-800 text-slate-500 border-slate-700 hover:text-slate-300'}`}>{t}m</button>
+                                                    ))}
+                                                </div>
+
+                                                {/* Display central */}
+                                                <div className="flex flex-col items-center flex-1">
+                                                    <div className={`text-6xl font-black italic tabular-nums tracking-tighter leading-none ${timerActive ? 'text-green-500' : 'text-white opacity-40'}`}>
+                                                        {formatTime(timeLeft)}
+                                                    </div>
+                                                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mt-2 italic">Em Jogo</p>
+                                                </div>
+
+                                                {/* Controles à direita */}
+                                                <div className="flex flex-col gap-2">
+                                                    <button onClick={() => setTimerActive(!timerActive)} className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-90 ${timerActive ? 'bg-amber-500 text-white' : 'bg-green-600 text-white shadow-green-500/20'}`}>
+                                                        {timerActive ? <Icons.Pause /> : <Icons.Play />}
+                                                    </button>
+                                                    <button onClick={resetTimer} className="w-14 h-10 bg-slate-800 text-slate-400 rounded-xl border border-slate-700 flex items-center justify-center active:rotate-[-45deg] transition-transform">
+                                                        <Icons.RotateCcw />
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-300 py-24 px-10 text-center border-4 border-dashed border-slate-100 rounded-[40px]">
-                                    <Icon name="shuffle" className="w-16 h-16 opacity-10 mb-6" />
-                                    <h3 className="text-xl font-bold text-slate-400">Pronto para o racha?</h3>
-                                    <p className="max-w-xs mt-2 text-sm">Adicione os jogadores à esquerda ou cole sua lista do WhatsApp.</p>
-                                </div>
-                            )}
-                        </div>
+
+                                        {/* ARENA DE CONFRONTO OTIMIZADA */}
+                                        <div className="w-full space-y-3">
+                                            <div className="flex flex-col gap-3 relative">
+                                                
+                                                {/* TIME 1 - COMPACTO */}
+                                                <div className={`bg-white rounded-3xl shadow-sm border-l-8 p-4 flex items-center justify-between transition-all border-y border-r border-slate-100 ${teams[0].members.length === playersPerTeam ? 'border-l-green-600 playing-pulse-green' : 'border-l-amber-500'}`}>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{teams[0].name}</h3>
+                                                            {timerActive && <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>}
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {teams[0].members.map((m, idx) => (
+                                                                <span key={m.id} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md uppercase border border-slate-200/50">{m.name}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => concludeMatch(0)} className="ml-4 bg-green-600 text-white w-12 h-12 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-green-100 active:scale-95 flex items-center justify-center"><Icons.CheckCircle /></button>
+                                                </div>
+
+                                                {/* DIVISOR VS FLUTUANTE */}
+                                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 hidden sm:flex">
+                                                    <div className="bg-slate-900 text-white w-10 h-10 rounded-full flex items-center justify-center font-black italic border-4 border-slate-50 text-xs shadow-xl">VS</div>
+                                                </div>
+
+                                                {/* TIME 2 - COMPACTO */}
+                                                <div className={`bg-white rounded-3xl shadow-sm border-l-8 p-4 flex items-center justify-between transition-all border-y border-r border-slate-100 ${teams[1].members.length === playersPerTeam ? 'border-l-blue-600 playing-pulse-blue' : 'border-l-amber-500'}`}>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{teams[1].name}</h3>
+                                                            {timerActive && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>}
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {teams[1].members.map((m, idx) => (
+                                                                <span key={m.id} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md uppercase border border-slate-200/50">{m.name}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => concludeMatch(1)} className="ml-4 bg-blue-600 text-white w-12 h-12 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100 active:scale-95 flex items-center justify-center"><Icons.CheckCircle /></button>
+                                                </div>
+                                            </div>
+
+                                            {/* LISTA COMPLETA DE AGUARDANDO */}
+                                            {teams.length > 2 && (
+                                                <div className="space-y-2">
+                                                    <div className="bg-slate-800 text-white/90 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm">
+                                                        <Icons.Info />
+                                                        <span className="text-[9px] font-black uppercase tracking-wider italic">O time que perder vai para o fim da lista (Sempre completando o time incompleto na sequência)</span>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {teams.slice(2).map((team, tIdx) => (
+                                                            <div key={team.id} className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-2">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[10px] font-black text-slate-400 italic bg-slate-100 w-5 h-5 flex items-center justify-center rounded-full">{tIdx + 1}º</span>
+                                                                        <h4 className="text-[10px] font-black text-slate-600 uppercase italic">Próximo: {team.name || 'Próxima Equipe'}</h4>
+                                                                    </div>
+                                                                    <Icons.Clock className="text-slate-300" size={14} />
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {team.members.map((m, i) => (
+                                                                        <span key={m.id} className="text-[9px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 uppercase">{m.name}</span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="py-24 text-center text-slate-400 border-4 border-dotted border-slate-200 rounded-[3rem]">
+                                        <div className="mb-4 opacity-10 flex justify-center"><Icons.Trophy size={60} /></div>
+                                        <p className="text-xs uppercase font-black tracking-[0.2em]">Nenhum jogo ativo no momento</p>
+                                        <p className="text-[10px] font-medium text-slate-300 mt-2 uppercase tracking-widest">Gere as equipes na aba anterior</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </main>
+
+                    {/* MODAIS E BOTÕES FLUTUANTES */}
+                    {showMatchResultModal && teams.length >= 2 && (
+                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-90 duration-300">
+                                <div className="p-8 text-center">
+                                    <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-bounce"><Icons.Trophy /></div>
+                                    <h3 className="text-2xl font-black text-slate-900 uppercase italic mb-2 tracking-tighter">TEMPO ESGOTADO!</h3>
+                                    <p className="text-slate-500 text-xs font-bold uppercase mb-8 tracking-widest">Quem venceu a partida?</p>
+                                    <div className="space-y-3">
+                                        <button onClick={() => concludeMatch(0)} className="w-full py-5 bg-green-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-green-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"><div className="w-2 h-2 bg-white rounded-full"></div>{teams[0].name}</button>
+                                        <button onClick={() => concludeMatch(1)} className="w-full py-5 bg-blue-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"><div className="w-2 h-2 bg-white rounded-full"></div>{teams[1].name}</button>
+                                        <button onClick={concludeEmpate} className="w-full py-4 bg-slate-100 text-slate-500 font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition-colors">Empate (Sai os dois)</button>
+                                        <button onClick={() => { setShowMatchResultModal(false); setTimeLeft(60); }} className="w-full py-3 text-slate-400 font-black text-[9px] uppercase hover:underline">+1 Minuto de acréscimo</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab !== 'match' && timerActive && (
+                        <div onClick={() => setActiveTab('match')} className="timer-float fixed bottom-24 right-6 bg-slate-900 text-white pl-4 pr-3 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700 z-[45] cursor-pointer hover:bg-slate-800 transition-all active:scale-95 shadow-green-500/20">
+                            <div className="flex flex-col"><span className="text-[7px] font-black uppercase text-slate-500 tracking-tighter italic">Tempo de Jogo</span><span className="text-xl font-black italic text-green-400 leading-none tabular-nums">{formatTime(timeLeft)}</span></div>
+                            <div className="w-8 h-8 rounded-xl bg-green-600/20 flex items-center justify-center text-green-500"><Icons.Play /></div>
+                        </div>
+                    )}
+
+                    <button onClick={() => setShowResetConfirm(true)} className="fixed bottom-6 right-6 bg-white text-red-600 border border-red-100 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"><Icons.RotateCcw /><span className="absolute right-full mr-3 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl">Reiniciar Racha</span></button>
+
+                    {showResetConfirm && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2rem] w-full max-w-xs shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                <div className="p-8 text-center">
+                                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Icons.AlertTriangle /></div>
+                                    <h3 className="text-xl font-black text-slate-900 uppercase italic mb-2 tracking-tight">Reiniciar tudo?</h3>
+                                    <p className="text-slate-500 text-[11px] font-medium leading-relaxed mb-8">Isso apagará permanentemente todos os jogadores, equipes e o cronômetro. Deseja começar uma nova lista?</p>
+                                    <div className="flex flex-col gap-2"><button onClick={resetEverything} className="w-full py-4 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-red-700 transition-colors shadow-lg shadow-red-200">Sim, limpar tudo</button><button onClick={() => setShowResetConfirm(false)} className="w-full py-4 bg-slate-100 text-slate-500 font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition-colors">Cancelar</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-[11px] uppercase tracking-widest z-50 fade-out flex items-center gap-3"><Icons.Info /> {error}</div>
+                    )}
                 </div>
             );
         };
@@ -279,4 +845,5 @@
     </script>
 </body>
 </html>
+
 
